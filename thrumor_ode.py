@@ -40,14 +40,21 @@ def runge_kutta_4(f, V0, I0, t0, t_end, h, params):
     return t_values, V_values, I_values
 
 def show_mae_window(mae_data):
-    mae_window = tk.Toplevel()
-    mae_window.title("Анализ ошибок моделирования")
-    mae_window.geometry("750x450")
+    # Проверяем, существует ли уже окно и не было ли оно закрыто
+    if hasattr(root, 'mae_window') and root.mae_window.winfo_exists():
+        root.mae_window.lift()  # Поднимаем существующее окно на передний план
+        root.mae_window.focus_set()  # Даем фокус окну
+        return
+    
+    # Создаем новое окно
+    root.mae_window = tk.Toplevel()
+    root.mae_window.title("Анализ ошибок моделирования")
+    root.mae_window.geometry("750x450")
     
     style = ttk.Style()
     style.configure("Treeview.Heading", font=('Arial', 10, 'bold'))
     
-    tree = ttk.Treeview(mae_window, columns=("group", "mae_mm", "mae_percent", "mae_normalized", "max_value"), 
+    tree = ttk.Treeview(root.mae_window, columns=("group", "mae_mm", "mae_percent", "mae_normalized", "max_value"), 
                        show="headings", height=10)
     
     tree.heading("group", text="Группа", anchor=tk.CENTER)
@@ -71,37 +78,35 @@ def show_mae_window(mae_data):
             f"{data['max_value']:.0f}"
         ))
     
-    # Цветовая маркировка строк на основе MAE/K (%)
+    # Цветовая маркировка строк
     for item in tree.get_children():
         mae_norm = float(tree.item(item)['values'][3].rstrip('%'))
         mae_percent = float(tree.item(item)['values'][2].rstrip('%'))
         
-        # Определение цвета для MAE/K (%)
         if mae_norm < 5:
-            tree.tag_configure('excellent', background='#d4edda')  # зеленый
+            tree.tag_configure('excellent', background='#d4edda')
             tree.item(item, tags=('excellent',))
         elif 5 <= mae_norm < 10:
-            tree.tag_configure('good', background='#cce5ff')  # голубой
+            tree.tag_configure('good', background='#cce5ff')
             tree.item(item, tags=('good',))
         elif 10 <= mae_norm < 15:
-            tree.tag_configure('acceptable', background='#fff3cd')  # желтый
+            tree.tag_configure('acceptable', background='#fff3cd')
             tree.item(item, tags=('acceptable',))
         else:
-            tree.tag_configure('poor', background='#f8d7da')  # красный
+            tree.tag_configure('poor', background='#f8d7da')
             tree.item(item, tags=('poor',))
         
-        # Дополнительная маркировка для MAE (%)
         if mae_percent > 20:
-            tree.tag_configure('high_error', background='#ffdddd')  # светло-красный
+            tree.tag_configure('high_error', background='#ffdddd')
             tree.item(item, tags=(tree.item(item)['tags'][0], 'high_error'))
     
-    scrollbar = ttk.Scrollbar(mae_window, orient="vertical", command=tree.yview)
+    scrollbar = ttk.Scrollbar(root.mae_window, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=scrollbar.set)
     scrollbar.pack(side="right", fill="y")
     tree.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
     
     # Добавляем пояснение
-    info_frame = ttk.Frame(mae_window)
+    info_frame = ttk.Frame(root.mae_window)
     info_frame.pack(fill=tk.X, padx=10, pady=5)
     
     ttk.Label(info_frame, text="Интерпретация MAE/K (%):", font=('Arial', 9, 'bold')).pack(anchor='w')
@@ -116,58 +121,20 @@ def show_mae_window(mae_data):
     ttk.Label(info_frame, text="10-20% - Умеренная точность", font=('Arial', 9)).pack(anchor='w')
     ttk.Label(info_frame, text=">20% - Плохая точность", foreground='#721c24', font=('Arial', 9)).pack(anchor='w')
     
-    ttk.Button(mae_window, text="Закрыть", command=mae_window.destroy).pack(pady=10)
+    # Кнопка закрытия с обработчиком
+    ttk.Button(root.mae_window, text="Закрыть", 
+              command=lambda: root.mae_window.destroy()).pack(pady=10)
+    
+    # Обработчик закрытия окна
+    root.mae_window.protocol("WM_DELETE_WINDOW", lambda: root.mae_window.destroy())
     
     # Центрируем окно
-    mae_window.update_idletasks()
-    width = mae_window.winfo_width()
-    height = mae_window.winfo_height()
-    x = (mae_window.winfo_screenwidth() // 2) - (width // 2)
-    y = (mae_window.winfo_screenheight() // 2) - (height // 2)
-    mae_window.geometry(f'{width}x{height}+{x}+{y}')
-
-# В функции update_plot() измените часть с отображением ошибок в текстовом виджете:
-    if mae_data:
-        root.mae_frame = ttk.LabelFrame(frame_bottom, text="Ошибки моделирования")
-        root.mae_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5, expand=False)
-        
-        mae_display = tk.Text(root.mae_frame, height=7, width=40, font=('Courier New', 10))
-        mae_display.pack(padx=5, pady=5)
-        
-        mae_display.insert(tk.END, "Группа      MAE(мм³)   MAE(%)   MAE/K(%)\n", "header")
-        mae_display.insert(tk.END, "----------------------------------------\n")
-        
-        for group in ['PBS', 'DC-CIK', 'CIK', 'AG-DC-CIK']:
-            if group in mae_data:
-                data = mae_data[group]
-                line = f"{group:<12}{data['mae']:>8.2f}{data['mae_percent']:>8.1f}%{data['mae_normalized']:>8.1f}%\n"
-                
-                # Определяем теги для MAE/K (%)
-                if data['mae_normalized'] < 5:
-                    tag = "excellent"
-                elif 5 <= data['mae_normalized'] < 10:
-                    tag = "good"
-                elif 10 <= data['mae_normalized'] < 15:
-                    tag = "acceptable"
-                else:
-                    tag = "poor"
-                
-                # Дополнительный тег для MAE (%) > 20%
-                if data['mae_percent'] > 20:
-                    tag += " high_error"
-                
-                mae_display.insert(tk.END, line, tag)
-        
-        mae_display.tag_configure("header", font=('Courier New', 10, 'bold'))
-        mae_display.tag_configure("excellent", foreground='#155724')  # темно-зеленый
-        mae_display.tag_configure("good", foreground='#004085')  # темно-синий
-        mae_display.tag_configure("acceptable", foreground='#856404')  # темно-желтый
-        mae_display.tag_configure("poor", foreground='#721c24')  # темно-красный
-        mae_display.tag_configure("high_error", background='#ffdddd')  # светло-красный фон
-        mae_display.config(state=tk.DISABLED)
-        
-        ttk.Button(root.mae_frame, text="Подробный анализ", 
-                 command=lambda: show_mae_window(mae_data)).pack(pady=5)
+    root.mae_window.update_idletasks()
+    width = root.mae_window.winfo_width()
+    height = root.mae_window.winfo_height()
+    x = (root.mae_window.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.mae_window.winfo_screenheight() // 2) - (height // 2)
+    root.mae_window.geometry(f'{width}x{height}+{x}+{y}')
 
 def update_plot():
     params = [float(entry_params[param].get()) for param in default_values.keys()]
@@ -484,7 +451,7 @@ btn_reset = ttk.Button(btn_frame, text="СБРОС", command=reset_parameters)
 btn_reset.pack(side=tk.RIGHT, expand=True, padx=5)
 
 # Правая часть (Описание параметров)
-frame_description = ttk.LabelFrame(frame_bottom, text="ℹ Описание параметров")
+frame_description = ttk.LabelFrame(frame_bottom, text="Описание параметров")
 frame_description.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
 
 desc_text_widget = tk.Text(frame_description, wrap=tk.WORD, font=("Arial", 12), padx=10, pady=10, height=15, width=40)
@@ -510,7 +477,7 @@ desc_text_widget.tag_configure("bold", font=("Arial", 12, "bold"))
 desc_text_widget.config(state=tk.DISABLED)
 
 # Чекбоксы для модельных данных
-frame_checkboxes_model = ttk.LabelFrame(frame_bottom, text="📊 Отображение модельных данных")
+frame_checkboxes_model = ttk.LabelFrame(frame_bottom, text="Отображение модельных данных")
 frame_checkboxes_model.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
 
 show_tumor = tk.BooleanVar(value=True)
@@ -523,7 +490,7 @@ chk_immune = ttk.Checkbutton(frame_checkboxes_model, text="Показывать 
 chk_immune.pack(anchor="w")
 
 # Чекбоксы для экспериментальных данных
-frame_checkboxes_exp = ttk.LabelFrame(frame_bottom, text="🔬 Отображение экспериментальных данных")
+frame_checkboxes_exp = ttk.LabelFrame(frame_bottom, text="Отображение экспериментальных данных")
 frame_checkboxes_exp.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
 
 show_pbs = tk.BooleanVar(value=True)
